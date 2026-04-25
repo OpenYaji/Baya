@@ -7,6 +7,7 @@ import { promisify } from "util";
 const execAsync = promisify(exec);
 
 export async function POST(req: NextRequest) {
+  console.log("Launch API called");
   try {
     const { blueprint, stack, projectName } = await req.json();
 
@@ -14,8 +15,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Blueprint is required" }, { status: 400 });
     }
 
+    // Check if we are in a cloud environment (e.g. Vercel)
+    const isVercel = process.env.VERCEL === "1";
+    if (isVercel) {
+      console.error("Attempted to launch in a Vercel environment. This is not supported.");
+      return NextResponse.json({ 
+        error: "Direct project launching is only supported in local development environments. Please use 'Download Script' instead." 
+      }, { status: 403 });
+    }
+
     const baseDir = path.join(process.cwd(), "scaffolds", projectName || "enterprise-app");
-    await fs.mkdir(baseDir, { recursive: true });
+    console.log(`Scaffolding at: ${baseDir}`);
+    
+    try {
+      await fs.mkdir(baseDir, { recursive: true });
+    } catch (e: any) {
+      console.error("Failed to create directory:", e);
+      return NextResponse.json({ error: `Filesystem error: ${e.message}. Cloud deployments are often read-only.` }, { status: 500 });
+    }
 
     // Step 1: Execute Framework Initialization Commands (Whole Package Install)
     const pillars = ["frontend", "backend"];
@@ -26,6 +43,7 @@ export async function POST(req: NextRequest) {
       if (config && config.initCommand) {
         console.log(`Executing ${pillar} init: ${config.initCommand}`);
         try {
+          // Increase timeout for heavy installs
           const { stdout, stderr } = await execAsync(config.initCommand, { cwd: baseDir, timeout: 600000 });
           if (stdout) console.log(`${pillar} stdout:`, stdout);
           if (stderr) console.error(`${pillar} stderr:`, stderr);

@@ -1,18 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { 
-  Wand2, 
-  Layers, 
-  FileCode, 
-  Rocket, 
-  Plus, 
-  X, 
-  ChevronRight, 
+import {
+  Wand2,
+  Layers,
+  FileCode,
+  Rocket,
+  Plus,
+  X,
+  ChevronRight,
   Download,
   Loader2,
   Terminal,
-  Folder
+  Folder,
+  Orbit
 } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -59,12 +60,20 @@ export default function ArchitectApp() {
     try {
       const res = await fetch("/api/architect", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ intent, sandbox, projectName }),
       });
-      const data = await res.json();
       
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await res.text();
+        throw new Error(`Server returned non-JSON response (${res.status}): ${text.slice(0, 100)}...`);
+      }
+
+      const data = await res.json();
+
       if (!res.ok) {
-        throw new Error(data.error || "Failed to generate architecture");
+        throw new Error(data.error || `Failed to generate architecture (Status: ${res.status})`);
       }
 
       setArchData(data);
@@ -86,16 +95,24 @@ export default function ArchitectApp() {
     try {
       const res = await fetch("/api/launch", {
         method: "POST",
-        body: JSON.stringify({ 
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           blueprint: archData?.blueprint,
           stack: archData?.stack,
           projectName: projectName
         }),
       });
+
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await res.text();
+        throw new Error(`Launch failed: Server returned non-JSON response (${res.status}). This often happens due to timeouts in cloud environments. Details: ${text.slice(0, 100)}...`);
+      }
+
       const data = await res.json();
-      
-      if (!res.ok) throw new Error(data.error);
-      
+
+      if (!res.ok) throw new Error(data.error || `Launch failed (Status: ${res.status})`);
+
       alert(data.message);
     } catch (error: any) {
       console.error(error);
@@ -116,9 +133,45 @@ export default function ArchitectApp() {
     });
   };
 
+  const openAntiGravity = () => {
+    const win = window.open('', 'Anti-Gravity', 'width=800,height=600');
+    if (win) {
+      win.document.write(`
+        <html>
+          <head>
+            <title>Anti-Gravity</title>
+            <style>
+              body { margin: 0; overflow: hidden; background: #0f172a; color: white; display: flex; align-items: center; justify-content: center; font-family: sans-serif; height: 100vh; }
+              .container { position: relative; width: 100%; height: 100%; }
+              .floating {
+                position: absolute;
+                font-size: 3rem;
+                animation: float 4s ease-in-out infinite alternate;
+              }
+              @keyframes float {
+                0% { transform: translateY(0px) rotate(0deg); }
+                100% { transform: translateY(-100px) rotate(15deg); }
+              }
+            </style>
+          </head>
+          <body>
+            <div class="container" id="space">
+              <div class="floating" style="left: 40%; top: 50%; animation-delay: 0s;">🚀</div>
+              <div class="floating" style="left: 60%; top: 30%; animation-delay: -1s;">🌍</div>
+              <div class="floating" style="left: 20%; top: 60%; animation-delay: -2s;">⭐</div>
+              <div class="floating" style="left: 70%; top: 70%; animation-delay: -3s;">🧑‍🚀</div>
+              <div style="position: absolute; top: 10%; width: 100%; text-align: center; font-size: 2rem; font-weight: bold; animation: float 3s ease-in-out infinite alternate;">Anti-Gravity Mode Activated</div>
+            </div>
+          </body>
+        </html>
+      `);
+      win.document.close();
+    }
+  };
+
   const downloadScript = () => {
     if (!archData) return;
-    
+
     const scriptLines = [
       "#!/bin/bash",
       `# Project Scaffold for ${projectName}`,
@@ -149,13 +202,23 @@ export default function ArchitectApp() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-6 md:p-12">
       <header className="max-w-6xl mx-auto mb-12 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <Wand2 className="text-white w-6 h-6" />
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+              <Wand2 className="text-white w-6 h-6" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight">Baya AI</h1>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Architect</h1>
+          <button
+            onClick={openAntiGravity}
+            className="ml-4 flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded-full transition-colors border border-slate-700 hover:border-slate-600"
+            title="Anti-Gravity Mode"
+          >
+            <Orbit className="w-3.5 h-3.5 text-indigo-400" />
+            Anti-Gravity
+          </button>
         </div>
-        
+
         <nav className="flex items-center gap-2 text-sm font-medium text-slate-400">
           {[1, 2, 3, 4].map((p) => (
             <div key={p} className="flex items-center gap-2">
@@ -186,7 +249,7 @@ export default function ArchitectApp() {
                     <Folder className="w-4 h-4 text-indigo-400" />
                     Project Folder Name
                   </label>
-                  <input 
+                  <input
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-100 outline-none focus:ring-2 focus:ring-indigo-600 mb-6 font-mono"
                     placeholder="e.g. enterprise-app"
                     value={projectName}
@@ -196,7 +259,7 @@ export default function ArchitectApp() {
 
                 <div>
                   <label className="block text-sm font-semibold mb-2 text-slate-300">Product Intent</label>
-                  <textarea 
+                  <textarea
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-slate-100 focus:ring-2 focus:ring-indigo-600 focus:border-transparent outline-none transition-all h-32"
                     placeholder="e.g. I want to build a cross-platform health tracker that uses AI for data verification."
                     value={intent}
@@ -217,14 +280,14 @@ export default function ArchitectApp() {
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <input 
+                    <input
                       className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-slate-100 outline-none focus:ring-1 focus:ring-indigo-600"
                       placeholder="e.g. React Native, NestJS"
                       value={currentTool}
                       onChange={(e) => setCurrentTool(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && addTool()}
                     />
-                    <button 
+                    <button
                       onClick={addTool}
                       className="bg-slate-800 hover:bg-slate-700 text-slate-100 p-2 rounded-xl transition-colors"
                     >
@@ -233,7 +296,7 @@ export default function ArchitectApp() {
                   </div>
                 </div>
 
-                <button 
+                <button
                   disabled={!intent || loading}
                   onClick={handleGenerate}
                   className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 transition-all transform active:scale-[0.98]"
@@ -253,7 +316,7 @@ export default function ArchitectApp() {
                 <h2 className="text-3xl font-bold mb-2">The Mixing Board</h2>
                 <p className="text-slate-400">Review and tweak your proposed enterprise tech stack.</p>
               </div>
-              <button 
+              <button
                 onClick={() => setPhase(3)}
                 className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/20"
               >
@@ -273,7 +336,7 @@ export default function ArchitectApp() {
                     </div>
                     <h3 className="text-slate-500 text-sm font-bold uppercase tracking-wider mb-4">{item.name}</h3>
                     <div className="space-y-4">
-                      <input 
+                      <input
                         className="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-lg font-semibold text-indigo-400 focus:ring-1 focus:ring-indigo-600 outline-none"
                         value={item.value}
                         onChange={(e) => updateStack(key, e.target.value)}
@@ -306,12 +369,12 @@ export default function ArchitectApp() {
 
         {phase === 3 && archData && (
           <section className="animate-in fade-in zoom-in duration-500">
-             <div className="flex flex-col md:flex-row justify-between items-end gap-6 mb-8">
+            <div className="flex flex-col md:flex-row justify-between items-end gap-6 mb-8">
               <div>
                 <h2 className="text-3xl font-bold mb-2">The Modern Blueprint</h2>
                 <p className="text-slate-400 font-mono text-sm">Target Root: {projectName}/</p>
               </div>
-              <button 
+              <button
                 onClick={() => setPhase(4)}
                 className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-indigo-600/20"
               >
@@ -373,9 +436,9 @@ export default function ArchitectApp() {
               </div>
               <h2 className="text-4xl font-extrabold mb-4">Architecture Locked.</h2>
               <p className="text-slate-400 text-lg mb-12">Launch your project instantly on this machine. This will install all frameworks and libraries automatically.</p>
-              
+
               <div className="grid grid-cols-1 gap-4">
-                <button 
+                <button
                   disabled={launching}
                   onClick={handleLaunch}
                   className="bg-white text-slate-950 hover:bg-slate-200 font-bold py-6 rounded-2xl flex items-center justify-center gap-3 transition-all transform hover:scale-[1.02] active:scale-[0.98]"
@@ -384,7 +447,7 @@ export default function ArchitectApp() {
                   Launch & Bootstrap Whole Package
                 </button>
 
-                <button 
+                <button
                   onClick={downloadScript}
                   className="bg-slate-800 text-slate-100 hover:bg-slate-700 font-bold py-4 rounded-2xl flex items-center justify-center gap-3 transition-all"
                 >
@@ -393,7 +456,7 @@ export default function ArchitectApp() {
                 </button>
               </div>
 
-              <button 
+              <button
                 onClick={() => setPhase(1)}
                 className="mt-12 text-slate-500 hover:text-slate-300 font-medium underline underline-offset-4"
               >
