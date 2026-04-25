@@ -86,12 +86,15 @@ export default function ArchitectApp() {
     }
   };
 
+  const [launchStatus, setLaunchStatus] = useState<string>("");
+
   const handleLaunch = async () => {
     if (!confirm(`This will create '${projectName}' and run full installation commands (e.g. npx create-expo-app). Proceed?`)) {
       return;
     }
 
     setLaunching(true);
+    setLaunchStatus("Initiating launch...");
     try {
       const res = await fetch("/api/launch", {
         method: "POST",
@@ -103,22 +106,51 @@ export default function ArchitectApp() {
         }),
       });
 
-      const contentType = res.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        const text = await res.text();
-        throw new Error(`Launch failed: Server returned non-JSON response (${res.status}). This often happens due to timeouts in cloud environments. Details: ${text.slice(0, 100)}...`);
+      if (!res.ok) {
+        const errorText = await res.text();
+        try {
+          const errorJson = JSON.parse(errorText);
+          throw new Error(errorJson.error || `Launch failed (Status: ${res.status})`);
+        } catch {
+          throw new Error(`Launch failed (Status: ${res.status}): ${errorText.slice(0, 100)}`);
+        }
       }
 
-      const data = await res.json();
+      if (!res.body) throw new Error("No response body");
 
-      if (!res.ok) throw new Error(data.error || `Launch failed (Status: ${res.status})`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let finalMessage = "";
 
-      alert(data.message);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n").filter(l => l.trim());
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line);
+            if (data.error) throw new Error(data.error);
+            if (data.message) {
+              setLaunchStatus(data.message);
+              if (data.success) finalMessage = data.message;
+            }
+          } catch (e: any) {
+            console.error("Error parsing stream line:", e);
+            if (e.message) throw e;
+          }
+        }
+      }
+
+      if (finalMessage) alert(finalMessage);
     } catch (error: any) {
       console.error(error);
       alert(error.message || "Failed to launch CLI action.");
     } finally {
       setLaunching(false);
+      setLaunchStatus("");
     }
   };
 
@@ -446,6 +478,13 @@ export default function ArchitectApp() {
                   {launching ? <Loader2 className="w-6 h-6 animate-spin" /> : <Terminal className="w-6 h-6" />}
                   Launch & Bootstrap Whole Package
                 </button>
+
+                {launching && launchStatus && (
+                  <div className="bg-slate-900 border border-indigo-500/30 rounded-xl p-4 flex items-center gap-3 text-indigo-400 animate-pulse">
+                    <Terminal className="w-4 h-4" />
+                    <span className="text-sm font-mono">{launchStatus}</span>
+                  </div>
+                )}
 
                 <button
                   onClick={downloadScript}
